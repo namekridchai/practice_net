@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt" // formatting and printing values to the console.
 	"io"
 	"log"      // logging messages to the console.
@@ -73,7 +74,7 @@ func HandleUser(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func MiddleWarePrintMethod(next http.HandlerFunc) http.HandlerFunc {
+func DisplayMethod(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" {
 			fmt.Println("POST USERS")
@@ -86,7 +87,7 @@ func MiddleWarePrintMethod(next http.HandlerFunc) http.HandlerFunc {
 	})
 }
 
-func MiddleWareHello(next http.HandlerFunc) http.HandlerFunc {
+func DisplayHello(next http.HandlerFunc) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("hello console")
 		next.ServeHTTP(w, r)
@@ -98,11 +99,23 @@ type MiddleWare struct {
 	handler http.Handler
 }
 
-func (M MiddleWare) DisplayHello() {
+func (M *MiddleWare) DisplayHello() {
 	fmt.Println("hello console")
 }
 
-func (M MiddleWare) DisplayMethod(w http.ResponseWriter, r *http.Request) {
+func (M *MiddleWare) HandleBasicAuth(w http.ResponseWriter, r *http.Request) error {
+	username, password, ok := r.BasicAuth()
+	if ok {
+		if username == "admin" && password == "admin" {
+			return nil
+		}
+
+	}
+	http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	return errors.New("Unauthorized")
+}
+
+func (M *MiddleWare) DisplayMethod(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "POST" {
 		fmt.Println("POST USERS")
 	} else if r.Method == "GET" {
@@ -110,10 +123,13 @@ func (M MiddleWare) DisplayMethod(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (M MiddleWare) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (M *MiddleWare) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	err := M.HandleBasicAuth(w, r)
+	if err != nil {
+		return
+	}
 	M.DisplayHello()
 	M.DisplayMethod(w, r)
-
 	M.handler.ServeHTTP(w, r)
 }
 
@@ -130,7 +146,7 @@ func main() {
 	log.Println("Started on port", portNum)
 	fmt.Println("To close connection CTRL+C :-)")
 
-	middleWare := MiddleWare{handler: mux}
+	middleWare := &MiddleWare{handler: mux}
 	srv := http.Server{
 		Addr:    portNum,
 		Handler: middleWare,
